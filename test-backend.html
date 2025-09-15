@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Test</title>
+</head>
+<body>
+    <h1>Testing Backend Connection</h1>
+    <button onclick="testBackend()">Test Backend</button>
+    <div id="result"></div>
+
+    <script>
+        async function testBackend() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                const data = await response.json();
+                resultDiv.innerHTML = `✅ Backend is running: ${JSON.stringify(data)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Backend error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -10,6 +10,8 @@ const Sidebar = ({
   onNewChat,
   sidebarOpen,
   setSidebarOpen,
+  user,
+  onSignOut,
 }) => {
   const [accountOpen, setAccountOpen] = useState(false);
   const menuRef = useRef(null);
@@ -41,12 +43,6 @@ const Sidebar = ({
       </div>
 
       <div className="new-chat-wrapper">
-        <button className="new-chat-button" onClick={() => (window.location.href = '/file-rti')}>
-          File RTI With Us
-        </button>
-      </div>
-      
-      <div className="new-chat-wrapper">
         <button className="new-chat-button" onClick={onNewChat}>＋ New chat</button>
       </div>
 
@@ -68,42 +64,78 @@ const Sidebar = ({
 
       <div className="sidebar-footer" ref={menuRef}>
         <button
+          className="file-rti-button"
+          onClick={() => (window.location.href = '/file-rti')}
+        >
+          <span className="file-rti-icon" aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="10,9 9,9 8,9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </span>
+          <span className="file-rti-label">File RTI with us</span>
+        </button>
+        <button
           className="account-button"
           onClick={() => setAccountOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={accountOpen}
-          title="Account"
+          title={user ? "Account" : "Guest Account"}
         >
           <span className="account-avatar" aria-hidden>
-            {/* Guest icon placeholder; later swap with Google avatar */}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
+            {user ? (
+              // Show user's first letter or Google avatar
+              <div style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                backgroundColor: '#007bff',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 'bold'
+              }}>
+                {user.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            ) : (
+              // Guest icon
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
+                <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+            )}
           </span>
-          <span className="account-label">Guest</span>
+          <span className="account-label">
+            {user ? (user.user_metadata?.full_name || user.email?.split('@')[0] || 'User') : 'Guest'}
+          </span>
         </button>
 
         {accountOpen && (
           <div className="account-menu" role="menu">
-            <button className="account-menu-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-              <span className="menu-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
-                  <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </span>
-              <span>Profile</span>
-            </button>
-            <button className="account-menu-item" role="menuitem" onClick={() => setAccountOpen(false)}>
-              <span className="menu-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.8"/>
-                  <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.64 5.64l1.41 1.41M16.95 16.95l1.41 1.41M18.36 5.64l-1.41 1.41M7.05 16.95l-1.41 1.41" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </span>
-              <span>Settings</span>
-            </button>
+            {user && (
+              <button 
+                className="account-menu-item" 
+                role="menuitem" 
+                onClick={() => {
+                  setAccountOpen(false);
+                  window.location.href = '/profile';
+                }}
+              >
+                <span className="menu-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
+                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <span>Profile</span>
+              </button>
+            )}
+            
             <button
               className="account-menu-item"
               role="menuitemcheckbox"
@@ -127,6 +159,27 @@ const Sidebar = ({
               </span>
               <span>{darkMode ? 'Light mode' : 'Dark mode'}</span>
             </button>
+            
+            {user && onSignOut && (
+              <button 
+                className="account-menu-item" 
+                role="menuitem" 
+                onClick={() => {
+                  setAccountOpen(false);
+                  onSignOut();
+                }}
+                style={{ color: '#dc3545' }}
+              >
+                <span className="menu-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    <polyline points="16,17 21,12 16,7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+                <span>Sign Out</span>
+              </button>
+            )}
           </div>
         )}
       </div>
