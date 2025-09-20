@@ -41,12 +41,23 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
     
     # RAG Settings
-    RAG_SIMILARITY_THRESHOLD: float = 0.7
+    RAG_SIMILARITY_THRESHOLD: float = 0.5  # Lowered from 0.7 for better template matching
     RAG_MAX_RESULTS: int = 5
     
     # RTI Settings
-    RTI_FILING_FEE: float = 199.0
+    RTI_FILING_FEE: float = 99.0
     RTI_DEFAULT_DEPARTMENT: str = "Central Public Information Officer"
+    
+    # Razorpay Settings
+    RAZORPAY_KEY_ID: str
+    RAZORPAY_KEY_SECRET: str
+    
+    # Email Settings
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    ADMIN_EMAIL: str
     
     class Config:
         env_file = ".env"

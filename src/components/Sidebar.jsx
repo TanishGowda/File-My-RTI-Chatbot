@@ -1,5 +1,6 @@
 // src/components/Sidebar.jsx
 import React, { useEffect, useRef, useState } from 'react';
+import ProfileModal from './ProfileModal';
 
 const Sidebar = ({
   darkMode,
@@ -8,12 +9,14 @@ const Sidebar = ({
   activeId,
   onSelect,
   onNewChat,
+  onDelete,
   sidebarOpen,
   setSidebarOpen,
   user,
   onSignOut,
 }) => {
   const [accountOpen, setAccountOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -27,7 +30,8 @@ const Sidebar = ({
   }, []);
 
   return (
-    <div className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
+    <>
+      <div className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
       <button
         className="sidebar-toggle"
         onClick={() => setSidebarOpen && setSidebarOpen(!sidebarOpen)}
@@ -39,7 +43,7 @@ const Sidebar = ({
         </svg>
       </button>
       <div className="sidebar-branding">
-        <img src="/filemyrti.png" alt="FileMyRTI" className="sidebar-logo" />
+        <img src="/final_logo.png" alt="FileMyRTI" className="sidebar-logo" />
       </div>
 
       <div className="new-chat-wrapper">
@@ -50,13 +54,27 @@ const Sidebar = ({
 
       <div className="conversation-wrapper">
         <ul className="conversation-list">
-          {conversations.map((conv) => (
+          {Array.isArray(conversations) && conversations.map((conv) => (
             <li
-              key={conv.id}
+              key={conv.id || Math.random()}
               className={`conversation-item ${activeId === conv.id ? 'active' : ''}`}
               onClick={() => onSelect && onSelect(conv.id)}
             >
-              <div className="conversation-title">{conv.title}</div>
+              <div className="conversation-content">
+                <div className="conversation-title">{conv.title || 'New Chat'}</div>
+                {onDelete && conv.title !== 'New Chat' && (
+                  <button
+                    className="conversation-delete-btn"
+                    onClick={(e) => onDelete(conv.id, e)}
+                    aria-label={`Delete conversation: ${conv.title || 'New Chat'}`}
+                    title="Delete conversation"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -65,7 +83,7 @@ const Sidebar = ({
       <div className="sidebar-footer" ref={menuRef}>
         <button
           className="file-rti-button"
-          onClick={() => (window.location.href = '/file-rti')}
+          onClick={() => window.open('https://filemyrti.com/', '_blank')}
         >
           <span className="file-rti-icon" aria-hidden>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -76,7 +94,7 @@ const Sidebar = ({
               <polyline points="10,9 9,9 8,9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </span>
-          <span className="file-rti-label">File RTI with us</span>
+          <span className="file-rti-label">Our Website</span>
         </button>
         <button
           className="account-button"
@@ -123,7 +141,7 @@ const Sidebar = ({
                 role="menuitem" 
                 onClick={() => {
                   setAccountOpen(false);
-                  window.location.href = '/profile';
+                  setProfileModalOpen(true);
                 }}
               >
                 <span className="menu-icon" aria-hidden>
@@ -183,7 +201,14 @@ const Sidebar = ({
           </div>
         )}
       </div>
-    </div>
+      </div>
+      
+      {/* Profile Modal - Outside sidebar container */}
+      <ProfileModal 
+        isOpen={profileModalOpen} 
+        onClose={() => setProfileModalOpen(false)} 
+      />
+    </>
   );
 };
 

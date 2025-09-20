@@ -7,7 +7,6 @@ import ChatPage from './pages/ChatPage';
 import AuthPage from './pages/AuthPage';
 import SignupPage from './pages/SignupPage';
 import FileRTIPage from './pages/FileRTIPage';
-import ProfilePage from './pages/ProfilePage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 
@@ -73,11 +72,6 @@ function App() {
             <Route path="/file-rti" element={
               <ProtectedRoute>
                 <FileRTIPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <ProfilePage />
               </ProtectedRoute>
             } />
             <Route path="/terms" element={<TermsPage />} />

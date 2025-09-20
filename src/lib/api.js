@@ -75,7 +75,10 @@ class ApiClient {
   async getAuthToken() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      console.log('Auth session:', session)
+      console.log('🔐 Auth session:', session)
+      console.log('🔐 User in session:', session?.user)
+      console.log('🔐 Access token present:', !!session?.access_token)
+      console.log('🔐 Token value:', session?.access_token ? 'present' : 'missing')
       return session?.access_token || null
     } catch (error) {
       console.error('Error getting auth token:', error)
@@ -132,20 +135,29 @@ class ApiClient {
     return this.request(`/chat/conversations/${conversationId}/messages`, { method: 'GET' })
   }
 
-  async sendMessage(message, conversationId = null) {
+  async sendMessage(message, conversationId = null, userId = null) {
     return this.request('/chat/send', {
       method: 'POST',
       body: JSON.stringify({
         message,
         conversation_id: conversationId,
-        user_id: "test-user-123" // Temporary user ID for development
+        user_id: userId || "test-user-123" // Use provided user ID or fallback
       })
+    })
+  }
+
+  async updateConversation(conversationId, title) {
+    return this.request(`/chat/conversations/${conversationId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title })
     })
   }
 
   async deleteConversation(conversationId) {
     return this.request(`/chat/conversations/${conversationId}`, { method: 'DELETE' })
   }
+
+  // Debug method removed for performance
 
   // RTI endpoints
   async generateRTIDraft(message) {

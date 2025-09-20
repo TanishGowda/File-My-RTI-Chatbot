@@ -71,14 +71,19 @@ CREATE TABLE rti_filings (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create knowledge base table for RAG
-CREATE TABLE knowledge_base (
+-- Create PDF documents table for RAG
+CREATE TABLE pdf_documents (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  source_url TEXT,
-  category TEXT,
-  embedding TEXT, -- Store as JSON string for now (will be VECTOR(1536) when pgvector is enabled)
+  description TEXT,
+  file_name TEXT NOT NULL,
+  file_data TEXT NOT NULL, -- Store as base64 encoded string
+  file_size INTEGER NOT NULL,
+  file_type TEXT DEFAULT 'application/pdf',
+  extracted_text TEXT NOT NULL,
+  embedding VECTOR(1536), -- Vector embedding for semantic search
+  rti_category TEXT, -- Category like 'land_records', 'employment', 'education', etc.
+  rti_department TEXT, -- Specific department this format applies to
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -93,9 +98,10 @@ CREATE INDEX idx_rti_drafts_user_id ON rti_drafts(user_id);
 CREATE INDEX idx_rti_drafts_status ON rti_drafts(status);
 CREATE INDEX idx_rti_filings_user_id ON rti_filings(user_id);
 CREATE INDEX idx_rti_filings_payment_status ON rti_filings(payment_status);
-CREATE INDEX idx_knowledge_base_category ON knowledge_base(category);
--- Vector index will be created after pgvector is enabled
--- CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_pdf_documents_rti_category ON pdf_documents(rti_category);
+CREATE INDEX idx_pdf_documents_rti_department ON pdf_documents(rti_department);
+-- Vector index for semantic search
+CREATE INDEX idx_pdf_documents_embedding ON pdf_documents USING ivfflat (embedding vector_cosine_ops);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -111,7 +117,7 @@ CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_rti_drafts_updated_at BEFORE UPDATE ON rti_drafts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_rti_filings_updated_at BEFORE UPDATE ON rti_filings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_knowledge_base_updated_at BEFORE UPDATE ON knowledge_base FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_pdf_documents_updated_at BEFORE UPDATE ON pdf_documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Row Level Security (RLS) policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -119,6 +125,7 @@ ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rti_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rti_filings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pdf_documents ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
@@ -152,8 +159,8 @@ CREATE POLICY "Users can view own RTI filings" ON rti_filings FOR SELECT USING (
 CREATE POLICY "Users can insert own RTI filings" ON rti_filings FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own RTI filings" ON rti_filings FOR UPDATE USING (auth.uid() = user_id);
 
--- Knowledge base is public read-only
-CREATE POLICY "Knowledge base is publicly readable" ON knowledge_base FOR SELECT USING (true);
+-- PDF documents are public read-only for RAG
+CREATE POLICY "PDF documents are publicly readable" ON pdf_documents FOR SELECT USING (true);
 
 -- Create functions for common operations
 CREATE OR REPLACE FUNCTION get_user_conversations(user_uuid UUID)
@@ -204,67 +211,63 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Function to search knowledge base using text similarity (temporary until pgvector is enabled)
-CREATE OR REPLACE FUNCTION search_knowledge_base(query_text TEXT, match_threshold FLOAT DEFAULT 0.5, match_count INT DEFAULT 5)
+-- Function to search PDF documents using vector similarity
+CREATE OR REPLACE FUNCTION search_pdf_documents(query_embedding VECTOR(1536), match_threshold FLOAT DEFAULT 0.5, match_count INT DEFAULT 5)
 RETURNS TABLE (
   id UUID,
   title TEXT,
-  content TEXT,
-  source_url TEXT,
-  category TEXT,
+  description TEXT,
+  file_name TEXT,
+  extracted_text TEXT,
+  rti_category TEXT,
+  rti_department TEXT,
   similarity FLOAT
 ) AS $$
 BEGIN
   RETURN QUERY
   SELECT 
-    kb.id,
-    kb.title,
-    kb.content,
-    kb.source_url,
-    kb.category,
-    similarity(kb.title || ' ' || kb.content, query_text) as similarity
-  FROM knowledge_base kb
-  WHERE similarity(kb.title || ' ' || kb.content, query_text) > match_threshold
-  ORDER BY similarity DESC
+    pd.id,
+    pd.title,
+    pd.description,
+    pd.file_name,
+    pd.extracted_text,
+    pd.rti_category,
+    pd.rti_department,
+    1 - (pd.embedding <=> query_embedding) as similarity
+  FROM pdf_documents pd
+  WHERE 1 - (pd.embedding <=> query_embedding) > match_threshold
+  ORDER BY pd.embedding <=> query_embedding
   LIMIT match_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Note: This function uses PostgreSQL's built-in similarity() function
--- For better vector search, enable pgvector and use the vector-based function below:
-
-/*
--- Vector-based search function (use after enabling pgvector)
-CREATE OR REPLACE FUNCTION search_knowledge_base(query_embedding VECTOR(1536), match_threshold FLOAT DEFAULT 0.5, match_count INT DEFAULT 5)
+-- Function to search PDF documents by RTI category
+CREATE OR REPLACE FUNCTION search_pdf_documents_by_category(category TEXT, department TEXT DEFAULT NULL)
 RETURNS TABLE (
   id UUID,
   title TEXT,
-  content TEXT,
-  source_url TEXT,
-  category TEXT,
-  similarity FLOAT
+  description TEXT,
+  file_name TEXT,
+  extracted_text TEXT,
+  rti_category TEXT,
+  rti_department TEXT
 ) AS $$
 BEGIN
   RETURN QUERY
   SELECT 
-    kb.id,
-    kb.title,
-    kb.content,
-    kb.source_url,
-    kb.category,
-    1 - (kb.embedding <=> query_embedding) as similarity
-  FROM knowledge_base kb
-  WHERE 1 - (kb.embedding <=> query_embedding) > match_threshold
-  ORDER BY kb.embedding <=> query_embedding
-  LIMIT match_count;
+    pd.id,
+    pd.title,
+    pd.description,
+    pd.file_name,
+    pd.extracted_text,
+    pd.rti_category,
+    pd.rti_department
+  FROM pdf_documents pd
+  WHERE pd.rti_category = category
+    AND (department IS NULL OR pd.rti_department = department)
+  ORDER BY pd.created_at DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-*/
 
--- Insert sample knowledge base data
-INSERT INTO knowledge_base (title, content, category, source_url) VALUES
-('RTI Act 2005 Overview', 'The Right to Information Act, 2005 is an Act of the Parliament of India "to provide for setting out the practical regime of right to information for citizens" to secure access to information under the control of public authorities.', 'legal', 'https://rti.gov.in/'),
-('RTI Application Format', 'RTI applications should be submitted in writing or through electronic means in English, Hindi or in the official language of the area in which the application is being made.', 'procedure', 'https://rti.gov.in/'),
-('RTI Fees and Charges', 'RTI applications require a fee of Rs. 10/- for Central Government departments. State governments may have different fee structures.', 'fees', 'https://rti.gov.in/'),
-('RTI Exemptions', 'Information that would prejudicially affect the sovereignty and integrity of India, security, strategic, scientific or economic interests of the State, or information received in confidence from foreign government is exempted.', 'exemptions', 'https://rti.gov.in/'),
-('RTI Appeal Process', 'If an RTI application is rejected or information is not provided, citizens can file a first appeal to the First Appellate Authority within 30 days.', 'appeals', 'https://rti.gov.in/');
+-- Note: Sample PDF documents will be uploaded through the API
+-- The pdf_documents table is ready for storing PDF files with vector embeddings

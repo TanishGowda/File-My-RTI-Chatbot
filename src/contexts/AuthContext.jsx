@@ -92,11 +92,26 @@ export const AuthProvider = ({ children }) => {
       
       if (error) {
         console.log('Profile not found, creating new one...')
+        
+        // Get fresh user data to ensure we have the latest info
+        const { data: { user: currentUser } } = await auth.getCurrentUser()
+        console.log('Current user data for profile creation:', currentUser)
+        
+        // Extract name from Google OAuth metadata or user data
+        const fullName = currentUser?.user_metadata?.full_name || 
+                        currentUser?.user_metadata?.name || 
+                        currentUser?.email?.split('@')[0] || 
+                        'User'
+        
+        const email = currentUser?.email || 'user@example.com'
+        
+        console.log('Creating profile with:', { userId, email, fullName })
+        
         // Create profile if it doesn't exist
         const { data: newProfile } = await db.createProfile(
           userId,
-          user?.email || 'user@example.com',
-          user?.user_metadata?.full_name || 'User'
+          email,
+          fullName
         )
         setProfile(newProfile)
       } else {
