@@ -22,6 +22,15 @@ const ChatPage = () => {
   const { user, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
+  // State persistence keys
+  const STORAGE_KEYS = {
+    ACTIVE_CONVERSATION: 'filemyrti_active_conversation',
+    CONVERSATIONS: 'filemyrti_conversations',
+    MESSAGES: 'filemyrti_messages',
+    TEMPORARY_CHAT: 'filemyrti_temporary_chat',
+    TEMPORARY_MESSAGES: 'filemyrti_temporary_messages'
+  };
+
   const activeConversation = useMemo(() => {
     if (!Array.isArray(conversations) || conversations.length === 0) {
       return null;
@@ -29,15 +38,94 @@ const ChatPage = () => {
     return conversations.find(c => c.id === activeId) || conversations[0];
   }, [conversations, activeId]);
 
+  // State persistence functions
+  const saveStateToStorage = () => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_CONVERSATION, activeId || '');
+      localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(conversations));
+      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+      localStorage.setItem(STORAGE_KEYS.TEMPORARY_CHAT, JSON.stringify(isTemporaryChat));
+      localStorage.setItem(STORAGE_KEYS.TEMPORARY_MESSAGES, JSON.stringify(temporaryMessages));
+    } catch (error) {
+      console.warn('Failed to save state to localStorage:', error);
+    }
+  };
+
+  const loadStateFromStorage = () => {
+    try {
+      const savedActiveId = localStorage.getItem(STORAGE_KEYS.ACTIVE_CONVERSATION);
+      const savedConversations = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS);
+      const savedMessages = localStorage.getItem(STORAGE_KEYS.MESSAGES);
+      const savedTemporaryChat = localStorage.getItem(STORAGE_KEYS.TEMPORARY_CHAT);
+      const savedTemporaryMessages = localStorage.getItem(STORAGE_KEYS.TEMPORARY_MESSAGES);
+
+      return {
+        activeId: savedActiveId || null,
+        conversations: savedConversations ? JSON.parse(savedConversations) : [],
+        messages: savedMessages ? JSON.parse(savedMessages) : [],
+        isTemporaryChat: savedTemporaryChat ? JSON.parse(savedTemporaryChat) : false,
+        temporaryMessages: savedTemporaryMessages ? JSON.parse(savedTemporaryMessages) : []
+      };
+    } catch (error) {
+      console.warn('Failed to load state from localStorage:', error);
+      return {
+        activeId: null,
+        conversations: [],
+        messages: [],
+        isTemporaryChat: false,
+        temporaryMessages: []
+      };
+    }
+  };
+
+  const clearStoredState = () => {
+    try {
+      Object.values(STORAGE_KEYS).forEach(key => {
+        localStorage.removeItem(key);
+      });
+    } catch (error) {
+      console.warn('Failed to clear stored state:', error);
+    }
+  };
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    if (user && !loading) {
+      saveStateToStorage();
+    }
+  }, [activeId, conversations, messages, isTemporaryChat, temporaryMessages, user, loading]);
+
   // Load conversations on component mount
   useEffect(() => {
     console.log('ChatPage mounted, user:', user);
     console.log('User type:', typeof user);
     console.log('User truthy:', !!user);
     console.log('Auth loading:', authLoading);
+    
     if (user) {
-      console.log('User is authenticated, loading conversations...');
-      loadConversations();
+      console.log('User is authenticated, checking for cached state...');
+      
+      // Check if we have cached state first
+      const savedState = loadStateFromStorage();
+      const hasCachedState = savedState.conversations.length > 0 || savedState.activeId;
+      
+      if (hasCachedState) {
+        console.log('✅ Has cached state, restoring immediately');
+        // Restore cached state immediately
+        setConversations(savedState.conversations);
+        setActiveId(savedState.activeId);
+        setMessages(savedState.messages);
+        setIsTemporaryChat(savedState.isTemporaryChat);
+        setTemporaryMessages(savedState.temporaryMessages);
+        setLoading(false);
+        
+        // Load fresh data in background
+        console.log('🔄 Syncing with server in background...');
+        loadConversations(true);
+      } else {
+        console.log('No cached state, loading from server...');
+        loadConversations();
+      }
     } else if (!authLoading) {
       console.log('No user and auth not loading, not loading conversations');
     } else {
@@ -72,10 +160,17 @@ const ChatPage = () => {
     }
   };
 
-  const loadConversations = async () => {
+  const loadConversations = async (isBackgroundSync = false) => {
     try {
-      setLoading(true);
-      console.log('🔄 Loading conversations for user:', user?.id);
+      // Only show loading if this is not a background sync
+      if (!isBackgroundSync) {
+        setLoading(true);
+      }
+      console.log('🔄 Loading conversations for user:', user?.id, isBackgroundSync ? '(background sync)' : '');
+      
+      // First, try to restore state from localStorage
+      const savedState = loadStateFromStorage();
+      console.log('💾 Loaded saved state:', savedState);
       
       // Use the API client which handles authentication properly
       const response = await apiClient.getConversations();
@@ -93,7 +188,7 @@ const ChatPage = () => {
           updated_at: conv.updated_at || new Date().toISOString()
         }));
         
-        // Filter out any "New Chat" entries from database (we'll create a fresh one)
+        // Filter out any "New Chat" entries from database
         const existingConversations = conversationsWithTitles.filter(conv => conv.title !== 'New Chat');
         
         // Sort existing conversations by updated_at (most recent first)
@@ -102,29 +197,125 @@ const ChatPage = () => {
         console.log('📊 Found existing conversations:', existingConversations.length);
         console.log('📋 Existing conversation titles:', existingConversations.map(c => c.title));
         
-        // Create a fresh "New Chat" and set it as active
-        const newChat = {
-          id: `new-chat-${Date.now()}`,
-          title: 'New Chat',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          messages: []
-        };
+        // Check if this is a background sync and we already have state
+        if (isBackgroundSync && conversations.length > 0) {
+          console.log('🔄 Background sync: updating conversations list while preserving New Chat');
+          // Update conversations list but ensure New Chat is present if it was there before
+          const hasNewChat = conversations.some(conv => conv.title === 'New Chat');
+          let finalConversations = existingConversations;
+          
+          if (hasNewChat) {
+            // Find the existing New Chat from current state
+            const existingNewChat = conversations.find(conv => conv.title === 'New Chat');
+            if (existingNewChat) {
+              finalConversations = [existingNewChat, ...existingConversations];
+            }
+          }
+          
+          setConversations(finalConversations);
+          return;
+        }
         
-        console.log('🆕 Creating new chat with ID:', newChat.id);
+        // Check if we have a saved active conversation that still exists
+        let restoredActiveId = null;
+        let restoredMessages = [];
+        let restoredTemporaryChat = false;
+        let restoredTemporaryMessages = [];
         
-        // Add the new chat at the beginning, followed by existing conversations
-        const finalConversations = [newChat, ...existingConversations];
-        setConversations(finalConversations);
+        if (savedState.activeId && savedState.activeId !== 'temp-chat') {
+          // Check if the saved active conversation still exists in the database
+          const savedConversationExists = existingConversations.find(conv => conv.id === savedState.activeId);
+          if (savedConversationExists) {
+            console.log('✅ Found saved active conversation in database:', savedState.activeId);
+            restoredActiveId = savedState.activeId;
+            // Load messages for this conversation
+            try {
+              const messagesResponse = await apiClient.getMessages(savedState.activeId);
+              if (messagesResponse.success && messagesResponse.data) {
+                restoredMessages = messagesResponse.data.map((msg, index) => ({
+                  id: `${msg.sender}_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+                  sender: msg.sender, 
+                  text: msg.content,
+                  timestamp: msg.created_at
+                }));
+                console.log('✅ Restored messages for active conversation:', restoredMessages.length);
+              }
+            } catch (error) {
+              console.warn('⚠️ Failed to load messages for restored conversation:', error);
+            }
+          } else {
+            console.log('⚠️ Saved active conversation not found in database, will create new chat');
+          }
+        } else if (savedState.activeId === 'temp-chat' && savedState.isTemporaryChat) {
+          // Restore temporary chat state
+          console.log('✅ Restoring temporary chat state');
+          restoredTemporaryChat = true;
+          restoredTemporaryMessages = savedState.temporaryMessages || [];
+          restoredActiveId = 'temp-chat';
+        }
         
-        // Set the new chat as active
-        setActiveId(newChat.id);
-        console.log('✅ Setting new chat as active:', newChat.id);
+        // If no valid saved state, create a new chat
+        if (!restoredActiveId) {
+          const newChat = {
+            id: `new-chat-${Date.now()}`,
+            title: 'New Chat',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            messages: []
+          };
+          
+          console.log('🆕 Creating new chat with ID:', newChat.id);
+          restoredActiveId = newChat.id;
+          restoredMessages = [];
+        }
         
-        // Don't set any messages - let ChatWindow show the landing page welcome screen
-        setMessages([]);
+        // Set up conversations list
+        let finalConversations = existingConversations;
         
-        console.log('✅ No messages set - ChatWindow will show landing page welcome screen');
+        // Always ensure there's a "New Chat" available
+        const hasNewChat = existingConversations.some(conv => conv.title === 'New Chat') || 
+                          (restoredActiveId && restoredActiveId.startsWith('new-chat-'));
+        
+        if (!hasNewChat) {
+          // Create a new "New Chat" if none exists
+          const newChat = {
+            id: `new-chat-${Date.now()}`,
+            title: 'New Chat',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            messages: []
+          };
+          finalConversations = [newChat, ...existingConversations];
+        } else if (restoredActiveId && restoredActiveId.startsWith('new-chat-')) {
+          // Use the restored new chat
+          const newChat = {
+            id: restoredActiveId,
+            title: 'New Chat',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            messages: []
+          };
+          finalConversations = [newChat, ...existingConversations];
+        }
+        
+        // Apply restored state (only if not background sync)
+        if (!isBackgroundSync) {
+          setConversations(finalConversations);
+          setActiveId(restoredActiveId);
+          setMessages(restoredMessages);
+          setIsTemporaryChat(restoredTemporaryChat);
+          setTemporaryMessages(restoredTemporaryMessages);
+        } else {
+          // Background sync: just update conversations list
+          setConversations(finalConversations);
+        }
+        
+        console.log('✅ State restored successfully:', {
+          activeId: restoredActiveId,
+          messageCount: restoredMessages.length,
+          isTemporaryChat: restoredTemporaryChat,
+          temporaryMessageCount: restoredTemporaryMessages.length
+        });
 
       } else {
         console.error('❌ Failed to load conversations:', response);
@@ -133,18 +324,38 @@ const ChatPage = () => {
       }
     } catch (err) {
       console.error('❌ Error loading conversations:', err);
-      setConversations([]);
       
-      // Create a new chat as fallback
-      try {
-        console.log('🔄 Creating new chat as fallback...');
-        await handleNewChat();
-      } catch (newChatError) {
-        console.error('❌ Error creating new chat:', newChatError);
-        setError('Failed to load conversations and create new chat');
+      // Only handle errors if this is not a background sync
+      if (!isBackgroundSync) {
+        setConversations([]);
+        
+        // Try to restore from localStorage as fallback
+        const savedState = loadStateFromStorage();
+        if (savedState.conversations.length > 0) {
+          console.log('🔄 Using saved state as fallback');
+          setConversations(savedState.conversations);
+          setActiveId(savedState.activeId);
+          setMessages(savedState.messages);
+          setIsTemporaryChat(savedState.isTemporaryChat);
+          setTemporaryMessages(savedState.temporaryMessages);
+        } else {
+          // Create a new chat as last resort
+          try {
+            console.log('🔄 Creating new chat as last resort...');
+            await handleNewChat();
+          } catch (newChatError) {
+            console.error('❌ Error creating new chat:', newChatError);
+            setError('Failed to load conversations and create new chat');
+          }
+        }
+      } else {
+        console.log('⚠️ Background sync failed, but keeping current state');
       }
     } finally {
-      setLoading(false);
+      // Only set loading to false if this is not a background sync
+      if (!isBackgroundSync) {
+        setLoading(false);
+      }
     }
   };
 
@@ -606,6 +817,8 @@ const ChatPage = () => {
 
   const handleSignOut = async () => {
     try {
+      // Clear stored state before signing out
+      clearStoredState();
       await signOut();
       navigate('/auth');
     } catch (err) {

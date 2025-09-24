@@ -1207,24 +1207,25 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       onClick={handleRazorpayPayment}
                       disabled={paymentProcessing || paymentSuccess}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
-                        <line x1="1" y1="10" x2="23" y2="10" stroke="currentColor" strokeWidth="2"/>
-                      </svg>
-                      {paymentProcessing ? 'Processing...' : paymentSuccess ? 'Payment Successful!' : 'Pay with Razorpay'}
+                      {paymentProcessing ? 'Processing...' : paymentSuccess ? 'Payment Successful!' : 'Pay'}
                     </button>
+                    
+                    {/* Payment Method Logos */}
+                    <div className="payment-logos">
+                      <img src="/razorpay.png" alt="Razorpay" className="payment-logo-img" />
+                      <img src="/upi-logo.png" alt="UPI" className="payment-logo-img" />
+                      <img src="/visa-logo.png" alt="VISA" className="payment-logo-img" />
+                      <img src="/mastercard-logo.png" alt="MasterCard" className="payment-logo-img" />
+                    </div>
+                    <p className="payment-methods-text">Secure payment powered by Razorpay</p>
                     {paymentSuccess && (
                       <div className="payment-success-overlay">
                         <div className="payment-success-content">
-                          <div className="success-icon">
-                            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <circle cx="12" cy="12" r="10" fill="white"/>
-                              <path d="M9 12l2 2 4-4" stroke="#10B981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </div>
                           <h2>Payment Successful!</h2>
-                          <h3>Thanks for applying with FileMyRTI!</h3>
-                          <p>We'll get back to you in 24 hours.</p>
+                          <h3>✅ Thank you for filing your RTI with FileMyRTI!</h3>
+                          <p>Your application will be processed and filed within 12–24 hours.</p>
+                          <p>If we need any additional details, our team will contact you.</p>
+                          <p>📩 For any queries or extra assistance, reach us at <strong>admin@filemyrti.com</strong> or call/WhatsApp us on <strong>+91 99111 00589</strong>.</p>
                           <button 
                             className="close-success-btn"
                             onClick={() => {

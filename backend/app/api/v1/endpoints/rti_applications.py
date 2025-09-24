@@ -303,6 +303,10 @@ async def send_confirmation_emails(application_data):
         
         Best regards,
         FileMyRTI Team
+        
+        Contact Us:
+        Email: admin@filemyrti.com
+        Call/Whatsapp: +91 99111 00589
         """
         
         user_msg.attach(MIMEText(user_body, 'plain'))
