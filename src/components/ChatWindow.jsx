@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
+import { supabase } from '../lib/supabase';
 
 const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessage, isTemporaryChat = false, onActivateTemporaryChat }) => {
 
@@ -12,7 +13,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
   // Simple Markdown renderer for basic formatting
   const renderMarkdown = (text) => {
     if (!text) return '';
-    
+
     return text
       // Links [text](url) - must be done before other formatting
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="chat-link">$1</a>')
@@ -98,33 +99,33 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      
+
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
-      
+
       recognitionRef.current.onstart = () => {
         setIsListening(true);
         console.log('🎤 Speech recognition started');
       };
-      
+
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         console.log('🎤 Speech recognized:', transcript);
         setInput(prev => prev + (prev ? ' ' : '') + transcript);
         setIsListening(false);
       };
-      
+
       recognitionRef.current.onerror = (event) => {
         console.error('🎤 Speech recognition error:', event.error);
         setIsListening(false);
       };
-      
+
       recognitionRef.current.onend = () => {
         setIsListening(false);
         console.log('🎤 Speech recognition ended');
       };
-      
+
       setSpeechSupported(true);
     } else {
       console.log('🎤 Speech recognition not supported');
@@ -136,16 +137,16 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    
+
     // Reset height to auto to get the natural height
     el.style.height = 'auto';
-    
+
     // Calculate the new height, but limit it to a maximum
     const newHeight = Math.min(el.scrollHeight, 80); // Reduced max height to 80px for thinner appearance
-    
+
     // Set the new height
     el.style.height = `${newHeight}px`;
-    
+
     // Ensure minimum height
     if (newHeight < 28) {
       el.style.height = '28px';
@@ -156,7 +157,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
     console.log('File selection triggered');
     console.log('Event:', event);
     console.log('Files:', event.target.files);
-    
+
     const file = event.target.files[0];
     if (file) {
       console.log('File selected:', file.name, file.type, file.size);
@@ -168,7 +169,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
       ];
       const allowedExtensions = ['.pdf', '.docx', '.txt'];
       const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-      
+
       if (allowedTypes.includes(file.type) || allowedExtensions.includes(fileExtension)) {
         console.log('Supported file accepted');
         setIsProcessingFile(true);
@@ -217,10 +218,10 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
     try {
       await navigator.clipboard.writeText(text);
       console.log('Text copied to clipboard');
-      
+
       // Show visual feedback
       setCopiedMessageId(messageId);
-      
+
       // Reset the visual feedback after 2 seconds
       setTimeout(() => {
         setCopiedMessageId(null);
@@ -234,7 +235,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      
+
       // Show visual feedback for fallback too
       setCopiedMessageId(messageId);
       setTimeout(() => {
@@ -329,21 +330,21 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
     try {
       // Generate Word document
       const wordBlob = await generateRtiWordDocument(messageText);
-      
+
       // Create file object
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
       const filename = `RTI_Draft_${timestamp}.docx`;
       const file = new File([wordBlob], filename, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      
+
       // Set the attached file in the form data
       setRtiFilingData(prev => ({
         ...prev,
         attachedFile: file
       }));
-      
+
       // Store the original message text for preview
       setWordPreviewContent(messageText);
-      
+
       // Open the modal
       setRtiFilingModalOpen(true);
     } catch (error) {
@@ -401,13 +402,14 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
       formData.append('address', rtiFilingData.address);
       formData.append('file', rtiFilingData.attachedFile);
 
-      const response = await fetch('http://localhost:8000/api/v1/rti-applications/create-payment', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || 'test-token'}`
-        },
-        body: formData
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+
+      const response = await fetch('/api/v1/rti-applications/create-payment', {
+      method: 'POST',
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      body: formData
+    });
 
       const result = await response.json();
 
@@ -428,19 +430,19 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
         handler: async function (response) {
           try {
             // Verify payment
-            const verifyResponse = await fetch('http://localhost:8000/api/v1/rti-applications/verify-payment', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Bearer ${localStorage.getItem('access_token') || 'test-token'}`
-              },
-              body: new URLSearchParams({
-                payment_id: response.razorpay_payment_id,
-                order_id: response.razorpay_order_id,
-                signature: response.razorpay_signature,
-                application_data: JSON.stringify(application_data)
-              })
-            });
+            const verifyResponse = await fetch('/api/v1/rti-applications/verify-payment', {
+            method: 'POST',
+            headers: {
+             'Content-Type': 'application/x-www-form-urlencoded',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+           },
+             body: new URLSearchParams({
+             payment_id: response.razorpay_payment_id,
+             order_id: response.razorpay_order_id,
+             signature: response.razorpay_signature,
+             application_data: JSON.stringify(application_data)
+          })
+       });
 
             const verifyResult = await verifyResponse.json();
 
@@ -481,10 +483,10 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
   const parseMarkdownToWord = (text) => {
     const lines = text.split('\n');
     const paragraphs = [];
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       if (!line) {
         // Empty line - add spacing
         paragraphs.push(new Paragraph({
@@ -493,11 +495,11 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
         }));
         continue;
       }
-      
+
       // Check for bold text **text** or __text__
       const boldRegex = /\*\*(.*?)\*\*|__(.*?)__/g;
       const italicRegex = /\*(.*?)\*|_(.*?)_/g;
-      
+
       // Check if line starts with bullet points
       if (line.startsWith('- ') || line.startsWith('• ')) {
         const bulletText = line.substring(2);
@@ -554,50 +556,50 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
         }));
       }
     }
-    
+
     return paragraphs;
   };
-  
+
   // Function to parse inline formatting (bold, italic)
   const parseInlineFormatting = (text) => {
     const runs = [];
     let currentText = text;
-    
+
     // Process bold text first
     currentText = currentText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, (match, p1, p2) => {
       const boldText = p1 || p2;
       const beforeText = currentText.substring(0, currentText.indexOf(match));
       const afterText = currentText.substring(currentText.indexOf(match) + match.length);
-      
+
       if (beforeText) {
         runs.push(new TextRun({ text: beforeText, size: 24 }));
       }
       runs.push(new TextRun({ text: boldText, bold: true, size: 24 }));
-      
+
       currentText = afterText;
       return '';
     });
-    
+
     // Process italic text
     currentText = currentText.replace(/\*(.*?)\*|_(.*?)_/g, (match, p1, p2) => {
       const italicText = p1 || p2;
       const beforeText = currentText.substring(0, currentText.indexOf(match));
       const afterText = currentText.substring(currentText.indexOf(match) + match.length);
-      
+
       if (beforeText) {
         runs.push(new TextRun({ text: beforeText, size: 24 }));
       }
       runs.push(new TextRun({ text: italicText, italics: true, size: 24 }));
-      
+
       currentText = afterText;
       return '';
     });
-    
+
     // Add remaining text
     if (currentText) {
       runs.push(new TextRun({ text: currentText, size: 24 }));
     }
-    
+
     return runs.length > 0 ? runs : [new TextRun({ text: text, size: 24 })];
   };
 
@@ -673,7 +675,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
         console.error('Error generating Word document:', error);
         alert('Error generating Word document. Please try again.');
       });
-      
+
     } catch (error) {
       console.error('Error creating Word document:', error);
       alert('Error creating Word document. Please try again.');
@@ -693,7 +695,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
   };
 
   const hasUserMessage = Array.isArray(messages) && messages.length > 0;
-  
+
   // Debug logging
   console.log('🎭 ChatWindow - messages prop:', messages);
   console.log('🎭 ChatWindow - messages length:', messages?.length || 0);
@@ -738,7 +740,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
           </svg>
         </button>
       )}
-      
+
       {isTemporaryChat && (
         <div className="temporary-chat-indicator">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -763,8 +765,8 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
                 />
-                <button 
-                  className="input-icon attach" 
+                <button
+                  className="input-icon attach"
                   title="Attach PDF"
                   onClick={() => {
                     console.log('Attach button clicked');
@@ -787,7 +789,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                     }
                   }}
                   rows={1}
-                  placeholder="How can I help you.....?"
+                  placeholder="Type your query..."
                   className={attachedFile ? 'has-file' : ''}
                 />
                 {attachedFile && (
@@ -797,7 +799,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     {attachedFile.name.split('.').pop().toUpperCase()}
-                    <button 
+                    <button
                       className="remove-file-btn"
                       onClick={removeAttachedFile}
                       title="Remove file"
@@ -816,8 +818,8 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                     <path d="M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                   </svg>
                 </button>
-                <button 
-                  className={`input-icon mic ${isListening ? 'listening' : ''} ${!speechSupported ? 'disabled' : ''}`} 
+                <button
+                  className={`input-icon mic ${isListening ? 'listening' : ''} ${!speechSupported ? 'disabled' : ''}`}
                   title={speechSupported ? (isListening ? 'Stop recording' : 'Start voice recording') : 'Voice not supported'}
                   onClick={startVoiceRecording}
                   disabled={!speechSupported}
@@ -843,7 +845,6 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
             <div className="chat-history">
               {messages.map((msg, i) => (
                 <div key={i} className={`message-row ${msg.sender}`}>
-                  <div className={`avatar ${msg.sender}`}>{msg.sender === 'user' ? 'U' : 'R'}</div>
                   <div className={`message-bubble ${msg.sender}`}>
                     {msg.sender === 'bot' && editingMessageId === msg.id ? (
                       <div className="edit-container">
@@ -877,11 +878,11 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       </div>
                     ) : (
                       <>
-                        <div 
+                        <div
                           className="message-content"
-                          dangerouslySetInnerHTML={{ 
-                            __html: renderMarkdown(msg.text) 
-                          }} 
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdown(msg.text)
+                          }}
                         />
                         {msg.sender === 'bot' && (
                           <div className="message-actions">
@@ -930,7 +931,6 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
               ))}
               {isBotThinking && (
                 <div className="message-row bot">
-                  <div className="avatar bot">R</div>
                   <div className="message-bubble bot">
                     <WaveAnimation />
                   </div>
@@ -947,8 +947,8 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
                 />
-                <button 
-                  className="input-icon attach" 
+                <button
+                  className="input-icon attach"
                   title="Attach PDF"
                   onClick={() => {
                     console.log('Attach button clicked');
@@ -971,7 +971,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                     }
                   }}
                   rows={1}
-                  placeholder="How can I help you.....?"
+                  placeholder="..."
                   className={attachedFile ? 'has-file' : ''}
                 />
                 {attachedFile && (
@@ -981,7 +981,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     {attachedFile.name.split('.').pop().toUpperCase()}
-                    <button 
+                    <button
                       className="remove-file-btn"
                       onClick={removeAttachedFile}
                       title="Remove file"
@@ -1000,8 +1000,8 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                     <path d="M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                   </svg>
                 </button>
-                <button 
-                  className={`input-icon mic ${isListening ? 'listening' : ''} ${!speechSupported ? 'disabled' : ''}`} 
+                <button
+                  className={`input-icon mic ${isListening ? 'listening' : ''} ${!speechSupported ? 'disabled' : ''}`}
                   title={speechSupported ? (isListening ? 'Stop recording' : 'Start voice recording') : 'Voice not supported'}
                   onClick={startVoiceRecording}
                   disabled={!speechSupported}
@@ -1024,7 +1024,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     {attachedFile.name.split('.').pop().toUpperCase()}
-                    <button 
+                    <button
                       className="remove-file-btn"
                       onClick={removeAttachedFile}
                       title="Remove file"
@@ -1073,7 +1073,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                   </div>
                 </div>
               </div>
-              <button 
+              <button
                 className="modal-close-btn"
                 onClick={() => {
                   setRtiFilingModalOpen(false);
@@ -1095,7 +1095,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                 </svg>
               </button>
             </div>
-            
+
             <div className="modal-content">
               <div className="content-grid">
                 <div className="left-panel">
@@ -1114,7 +1114,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                             required
                           />
                         </div>
-                        
+
                         <div className="form-group">
                           <label htmlFor="phoneNumber">Phone Number *</label>
                           <input
@@ -1127,7 +1127,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                           />
                         </div>
                       </div>
-                      
+
                       <div className="form-group">
                         <label htmlFor="email">Email ID *</label>
                         <input
@@ -1139,7 +1139,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                           required
                         />
                       </div>
-                      
+
                       <div className="form-group">
                         <label htmlFor="address">Address *</label>
                         <textarea
@@ -1154,7 +1154,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                     </form>
                   </div>
                 </div>
-                
+
                 <div className="right-panel">
                   <div className="attachment-section">
                     <h3>RTI Draft Document</h3>
@@ -1192,7 +1192,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="payment-section">
                     <h3>Payment Details</h3>
                     <div className="payment-info">
@@ -1202,14 +1202,14 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                       </div>
                       <p className="payment-note">Complete payment to submit your RTI application</p>
                     </div>
-                    <button 
-                      className="razorpay-payment-btn" 
+                    <button
+                      className="razorpay-payment-btn"
                       onClick={handleRazorpayPayment}
                       disabled={paymentProcessing || paymentSuccess}
                     >
                       {paymentProcessing ? 'Processing...' : paymentSuccess ? 'Payment Successful!' : 'Pay'}
                     </button>
-                    
+
                     {/* Payment Method Logos */}
                     <div className="payment-logos">
                       <img src="/razorpay.png" alt="Razorpay" className="payment-logo-img" />
@@ -1226,7 +1226,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                           <p>Your application will be processed and filed within 12–24 hours.</p>
                           <p>If we need any additional details, our team will contact you.</p>
                           <p>📩 For any queries or extra assistance, reach us at <strong>admin@filemyrti.com</strong> or call/WhatsApp us on <strong>+91 99111 00589</strong>.</p>
-                          <button 
+                          <button
                             className="close-success-btn"
                             onClick={() => {
                               setRtiFilingModalOpen(false);
@@ -1248,13 +1248,13 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
                   </div>
                 </div>
               </div>
-              
+
               <div className="modal-footer-text">
                 <p><strong>We'll contact you, if any additional information is required</strong></p>
                 <p><strong>Thank you for using FileMyRTI</strong></p>
               </div>
             </div>
-            
+
           </div>
         </div>
       )}
@@ -1265,7 +1265,7 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
           <div className="word-preview-modal" onClick={(e) => e.stopPropagation()}>
             <div className="preview-header">
               <h3>RTI Draft Preview</h3>
-              <button 
+              <button
                 className="modal-close-btn"
                 onClick={closeWordPreview}
               >
@@ -1276,11 +1276,11 @@ const ChatWindow = ({ messages = [], onSend, isBotThinking = false, onEditMessag
               </button>
             </div>
             <div className="preview-content">
-              <div 
+              <div
                 className="word-preview-text"
-                dangerouslySetInnerHTML={{ 
-                  __html: renderMarkdown(wordPreviewContent) 
-                }} 
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(wordPreviewContent)
+                }}
               />
             </div>
           </div>

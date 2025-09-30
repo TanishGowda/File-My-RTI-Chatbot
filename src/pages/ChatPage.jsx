@@ -577,12 +577,12 @@ const ChatPage = () => {
         
         // Get auth token
         const { data: { session } } = await supabase.auth.getSession();
-        const authToken = session?.access_token || "test-token";
+        const authToken = session?.access_token;
         
-        const response = await fetch('http://localhost:8000/api/v1/chat/send', {
+        const response = await fetch('/api/v1/chat/send', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${authToken}`
+            ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
             // Note: Don't set Content-Type for FormData, let browser set it with boundary
           },
           body: formData
@@ -678,12 +678,12 @@ const ChatPage = () => {
       
       // Get auth token from Supabase
       const { data: { session } } = await supabase.auth.getSession();
-      const authToken = session?.access_token || 'test-token';
+      const authToken = session?.access_token;
       
-      const response = await fetch('http://localhost:8000/api/v1/chat/send', {
+      const response = await fetch('/api/v1/chat/send', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${authToken}`
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
           // Note: Don't set Content-Type for FormData, let browser set it with boundary
         },
         body: formData
@@ -879,6 +879,18 @@ const ChatPage = () => {
   return (
     <div className={`app ${darkMode ? 'dark' : ''}`}>
       <div className={`chat-layout ${sidebarOpen ? '' : 'sidebar-collapsed'}`}>
+        {/* Mobile Toggle Button - Outside sidebar */}
+        <button
+          className="sidebar-toggle mobile-toggle"
+          onClick={() => setSidebarOpen && setSidebarOpen(!sidebarOpen)}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          title={sidebarOpen ? 'Collapse' : 'Expand'}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+
         <Sidebar
           darkMode={darkMode}
           setDarkMode={setDarkMode}
